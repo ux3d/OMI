@@ -27,14 +27,27 @@ struct AudioData {
 	int32_t channels;
 };
 
+struct AudioSource {
+	ALuint buffer;
+};
+
+struct AudioEmitter {
+	uint32_t audioSourceIndex;
+};
+
+struct AudioEmitterInstance {
+	ALuint source;
+};
+
 //
 // Globals
 //
 
 static ALCdevice* g_device = 0;
 static ALCcontext* g_context = 0;
-static std::vector<ALuint> g_audioBuffers;
-static std::vector<ALuint> g_audioSources;
+static std::vector<AudioSource> g_audioSources;
+static std::vector<AudioEmitter> g_audioEmitters;
+static std::vector<AudioEmitterInstance> g_audioEmitterInstances;
 
 //
 // Functions
@@ -73,7 +86,7 @@ bool loadFile(std::string& output, const std::string& filename)
 	return true;
 }
 
-bool decodeAudio(AudioData& audioData, const std::string& filename)
+bool decodeAudioData(AudioData& audioData, const std::string& filename)
 {
 	//
 	// mpg123 for decoding
@@ -167,16 +180,32 @@ ALuint createAudioBuffer(const AudioData& audioData)
     return buffer;
 }
 
-void shutdownAudio()
+ALuint createAudioSource(ALint buffer)
 {
-	for (ALuint source : g_audioSources)
+	ALuint source;
+
+	alGenSources(1, &source);
+	alSourcei(source, AL_BUFFER, buffer);
+	if (alGetError() != AL_NO_ERROR)
 	{
-		alDeleteSources(1, &source);
+		return 0;
 	}
 
-	for (ALuint buffer : g_audioBuffers)
+	return source;
+}
+
+void shutdownAudio()
+{
+	for (auto& audioEmitterInstance : g_audioEmitterInstances)
 	{
-		alDeleteBuffers(1, &buffer);
+		alDeleteSources(1, &audioEmitterInstance.source);
+	}
+
+	//
+
+	for (auto& audioSource : g_audioSources)
+	{
+		alDeleteBuffers(1, &audioSource.buffer);
 	}
 
 	if (g_context)
@@ -277,32 +306,33 @@ int main(int argc, char *argv[])
 	// For now on, we expect the glTF is valid and does contain the required data
 
 	json& OMI_audio_emitter = extensions["OMI_audio_emitter"];
-	for (auto& audioSource : OMI_audio_emitter["audioSources"])
+
+	for (auto& currentAudioSource : OMI_audio_emitter["audioSources"])
 	{
-		if (!audioSource.contains("uri"))
+		if (!currentAudioSource.contains("uri"))
 		{
-			printf("Error: Only supporting audioSource with uri\n");
+			printf("Error: Only supporting audioBuffer with uri\n");
 
 			shutdownAudio();
 
 			return -1;
 		}
 
-		if (audioSource["uri"].get<std::string>().find("data:application/") == 0)
+		if (currentAudioSource["uri"].get<std::string>().find("data:application/") == 0)
 		{
-			printf("Error: Only supporting audioSource with uri containing a filename\n");
+			printf("Error: Only supporting audioBuffer with uri containing a filename\n");
 
 			shutdownAudio();
 
 			return -1;
 		}
 
-		std::string uri = audioSource["uri"].get<std::string>();
+		std::string uri = currentAudioSource["uri"].get<std::string>();
 
 		loadFilename = decomposedFilename.parentPath + uri;
 
 		AudioData audioData;
-		if (!decodeAudio(audioData, loadFilename))
+		if (!decodeAudioData(audioData, loadFilename))
 		{
 			printf("Error: Could not decode audio data for uri '%s'\n", uri.c_str());
 
@@ -311,8 +341,10 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		ALuint audioBuffer = createAudioBuffer(audioData);
-		if (audioBuffer == 0)
+		AudioSource audioSource;
+
+		audioSource.buffer = createAudioBuffer(audioData);
+		if (audioSource.buffer == 0)
 		{
 			printf("Error: Could not create audio buffer for uri '%s'\n", uri.c_str());
 
@@ -320,28 +352,78 @@ int main(int argc, char *argv[])
 
 			return -1;
 		}
-		g_audioBuffers.push_back(audioBuffer);
 
-		printf("Info: Loaded audio source with uri '%s'\n", uri.c_str());
+		g_audioSources.push_back(audioSource);
+
+		printf("Info: Created audio source for uri '%s'\n", uri.c_str());
+	}
+
+	for (auto& currentAudioEmitter : OMI_audio_emitter["audioEmitters"])
+	{
+		AudioEmitter audioEmitter;
+		audioEmitter.audioSourceIndex = currentAudioEmitter["source"].get<uint32_t>();
+		g_audioEmitters.push_back(audioEmitter);
+
+		printf("Info: Created audio emitter for audio source %u\n", audioEmitter.audioSourceIndex);
 	}
 
 	//
 
-
-	for (ALuint buffer : g_audioBuffers)
+	for (auto& currentScene : glTF["scenes"])
 	{
-		ALuint audioSource = 0;
-	    alGenSources(1, &audioSource);
-	    alSourcei(audioSource, AL_BUFFER, (ALint)buffer);
+		if (currentScene.contains("extensions"))
+		{
+			if (currentScene["extensions"].contains("OMI_audio_emitter"))
+			{
+				json& audioEmitters = currentScene["extensions"]["OMI_audio_emitter"]["audioEmitters"];
 
-	    if (alGetError() != AL_NO_ERROR)
-	    {
-	    	shutdownAudio();
+				for (auto& currentAudioEmitter : audioEmitters)
+				{
+					uint32_t audioEmitterIndex = currentAudioEmitter.get<uint32_t>();
 
-	    	return -1;
-	    }
+					AudioEmitterInstance audioEmitterInstance;
 
-	    g_audioSources.push_back(audioSource);
+					audioEmitterInstance.source = createAudioSource((ALint)g_audioSources[g_audioEmitters[audioEmitterIndex].audioSourceIndex].buffer);
+					if (!audioEmitterInstance.source)
+					{
+						shutdownAudio();
+
+						return -1;
+					}
+
+					g_audioEmitterInstances.push_back(audioEmitterInstance);
+
+					printf("Info: Created instance for audio emitter %u required for scene\n", audioEmitterIndex);
+				}
+			}
+		}
+	}
+
+	for (auto& currentNode : glTF["nodes"])
+	{
+		if (currentNode.contains("extensions"))
+		{
+			if (currentNode["extensions"].contains("OMI_audio_emitter"))
+			{
+				json& audioEmitter = currentNode["extensions"]["OMI_audio_emitter"]["audioEmitter"];
+
+				uint32_t audioEmitterIndex = audioEmitter.get<uint32_t>();
+
+				AudioEmitterInstance audioEmitterInstance;
+
+				audioEmitterInstance.source = createAudioSource((ALint)g_audioSources[g_audioEmitters[audioEmitterIndex].audioSourceIndex].buffer);
+				if (!audioEmitterInstance.source)
+				{
+					shutdownAudio();
+
+					return -1;
+				}
+
+				g_audioEmitterInstances.push_back(audioEmitterInstance);
+
+				printf("Info: Created instance for audio emitter %u required for node\n", audioEmitterIndex);
+			}
+		}
 	}
 
 	//
@@ -349,12 +431,12 @@ int main(int argc, char *argv[])
 	//
 
 	ALint state;
-	for (ALuint source : g_audioSources)
+	for (auto& audioEmitterInstance : g_audioEmitterInstances)
 	{
-		alSourcePlay(source);
+		alSourcePlay(audioEmitterInstance.source);
 		do {
 			std::this_thread::yield();
-			alGetSourcei(source, AL_SOURCE_STATE, &state);
+			alGetSourcei(audioEmitterInstance.source, AL_SOURCE_STATE, &state);
 		} while(alGetError() == AL_NO_ERROR && state == AL_PLAYING);
 	}
 
