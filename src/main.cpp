@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <AL/al.h>
+#include <AL/alext.h>
 
 #include <nlohmann/json.hpp>
 
@@ -30,6 +31,39 @@ bool loadFile(std::string& output, const std::string& filename)
 
 int main(int argc, char *argv[])
 {
+	// OpenAL init
+
+	ALCdevice* device = 0;
+	ALCcontext* context = 0;
+
+	device = alcOpenDevice(NULL);
+	if(!device)
+	{
+		printf("Error: Could not open device\n");
+
+		return 1;
+	}
+
+	context = alcCreateContext(device, 0);
+	if(!context)
+	{
+		printf("Error: Could not create context\n");
+
+		return 1;
+	}
+
+	if (alcMakeContextCurrent(context) == ALC_FALSE)
+	{
+        printf("Error: Could not set context\n");
+
+        alcDestroyContext(context);
+        alcCloseDevice(device);
+
+        return 1;
+	}
+
+	//
+
 	std::string parentPath = "";
 	std::string exampleFilename = "example01.gltf";
 
@@ -93,6 +127,13 @@ int main(int argc, char *argv[])
 
 		printf("Info: Loaded audio source with uri '%s'\n", uri.c_str());
 	}
+
+	// OpenAL shutdown
+
+	alcMakeContextCurrent(0);
+
+	alcDestroyContext(context);
+	alcCloseDevice(device);
 
 	//
 
