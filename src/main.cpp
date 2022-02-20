@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <sndfile.h>
+
 #include <AL/al.h>
 #include <AL/alext.h>
 
