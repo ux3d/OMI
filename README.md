@@ -10,3 +10,5 @@ OpenAL soft
 https://github.com/kcat/openal-soft  
 Quick Sounds  
 https://quicksounds.com/  
+libsndfile
+https://github.com/libsndfile/libsndfile  
