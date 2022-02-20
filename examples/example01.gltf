@@ -44,8 +44,8 @@
       "extensions": {
         "OMI_audio_emitter": {
           "audioEmitters": [
-		    0
-		  ]
+		        0
+		      ]
         }
       }
     }
@@ -54,10 +54,10 @@
     {
       "name": "Duck",
       "translation": [
-	    1,
+	      1,
         2,
-	    3
-	  ],
+	      3
+	    ],
       "extensions": {
         "OMI_audio_emitter": {
           "audioEmitter": 1
