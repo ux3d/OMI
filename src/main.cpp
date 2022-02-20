@@ -30,7 +30,7 @@ bool loadFile(std::string& output, const std::string& filename)
 
 int main(int argc, char *argv[])
 {
-	std::string parentPath = "./examples/";
+	std::string parentPath = "";
 	std::string exampleFilename = "example01.gltf";
 
 	std::string loadFilename = parentPath + exampleFilename;
