@@ -6,6 +6,10 @@
 #include <thread>
 #include <vector>
 
+#include <glm/glm.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/transform.hpp>
+
 #include <mpg123.h>
 
 #include <AL/al.h>
@@ -33,10 +37,16 @@ struct AudioSource {
 
 struct AudioEmitter {
 	uint32_t audioSourceIndex;
+	bool playing = false;
+	ALboolean loop = AL_FALSE;
+	ALfloat gain = 1.0f;
 };
 
 struct AudioEmitterInstance {
+	uint32_t audioEmitterIndex;
 	ALuint source;
+	//
+	glm::mat4 world;
 };
 
 //
@@ -180,18 +190,107 @@ ALuint createAudioBuffer(const AudioData& audioData)
     return buffer;
 }
 
-ALuint createAudioSource(ALint buffer)
+ALuint createAudioSource(const AudioEmitter& audioEmitter)
 {
 	ALuint source;
 
 	alGenSources(1, &source);
-	alSourcei(source, AL_BUFFER, buffer);
+
+	alSourcei(source, AL_BUFFER, (ALint)g_audioSources[audioEmitter.audioSourceIndex].buffer);
+
+	alSourcei(source, AL_LOOPING, audioEmitter.loop);
+	alSourcef(source, AL_GAIN, audioEmitter.gain);
+
 	if (alGetError() != AL_NO_ERROR)
 	{
 		return 0;
 	}
 
 	return source;
+}
+
+bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
+{
+	for (auto& currentNodeIndex : nodes)
+	{
+		json& currentNode = glTF["nodes"][currentNodeIndex.get<uint32_t>()];
+
+		glm::mat4 matrixTranslation(1.0f);
+		if (currentNode.contains("translation"))
+		{
+			glm::vec3 translation;
+			translation.x = currentNode["translation"][0].get<float>();
+			translation.y = currentNode["translation"][1].get<float>();
+			translation.t = currentNode["translation"][2].get<float>();
+
+			matrixTranslation = glm::translate(translation);
+		}
+
+		glm::mat4 matrixRotation(1.0f);
+		if (currentNode.contains("rotation"))
+		{
+			glm::quat rotation;
+			rotation.w = currentNode["rotation"][3].get<float>();
+			rotation.x = currentNode["rotation"][0].get<float>();
+			rotation.y = currentNode["rotation"][1].get<float>();
+			rotation.z = currentNode["rotation"][2].get<float>();
+
+			matrixTranslation = glm::toMat4(rotation);
+		}
+
+		glm::mat4 matrixScale(1.0f);
+		if (currentNode.contains("scale"))
+		{
+			glm::vec3 scale;
+			scale.x = currentNode["scale"][0].get<float>();
+			scale.y = currentNode["scale"][1].get<float>();
+			scale.t = currentNode["scale"][2].get<float>();
+
+			matrixTranslation = glm::scale(scale);
+		}
+
+		glm::mat4 local = matrixTranslation * matrixRotation * matrixScale;
+		glm::mat4 world = parent * local;
+		glm::vec4 currentPosition = world * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+		//
+
+		if (currentNode.contains("extensions"))
+		{
+			if (currentNode["extensions"].contains("OMI_audio_emitter"))
+			{
+				json& audioEmitter = currentNode["extensions"]["OMI_audio_emitter"]["audioEmitter"];
+
+				AudioEmitterInstance audioEmitterInstance;
+				audioEmitterInstance.audioEmitterIndex = audioEmitter.get<uint32_t>();
+
+				audioEmitterInstance.source = createAudioSource(g_audioEmitters[audioEmitterInstance.audioEmitterIndex]);
+				if (!audioEmitterInstance.source)
+				{
+					return false;
+				}
+
+				ALfloat position[3] = {currentPosition.x, currentPosition.y, currentPosition.z};
+				alSourcefv(audioEmitterInstance.source, AL_POSITION, position);
+
+				g_audioEmitterInstances.push_back(audioEmitterInstance);
+
+				printf("Info: Created instance for audio emitter %u required for node\n", audioEmitterInstance.audioEmitterIndex);
+			}
+		}
+
+		//
+
+		if (currentNode.contains("children"))
+		{
+			if (!handleNodes(currentNode["children"], glTF, world))
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
 }
 
 void shutdownAudio()
@@ -266,6 +365,13 @@ int main(int argc, char *argv[])
 
         return 1;
 	}
+
+	ALfloat listenerPosition[3] = {0.0f, 0.0f, 0.0f};
+	ALfloat listenerVelocity[3] = {0.0f, 0.0f, 0.0f};
+	ALfloat listenerOrientation[6] = {0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f};
+	alListenerfv(AL_POSITION, listenerPosition);
+	alListenerfv(AL_VELOCITY, listenerVelocity);
+	alListenerfv(AL_ORIENTATION, listenerOrientation);
 
 	//
 	// glTF loading and interpreting
@@ -361,7 +467,22 @@ int main(int argc, char *argv[])
 	for (auto& currentAudioEmitter : OMI_audio_emitter["audioEmitters"])
 	{
 		AudioEmitter audioEmitter;
+
 		audioEmitter.audioSourceIndex = currentAudioEmitter["source"].get<uint32_t>();
+
+		if (currentAudioEmitter.contains("playing"))
+		{
+			audioEmitter.playing = currentAudioEmitter["playing"].get<bool>();
+		}
+		if (currentAudioEmitter.contains("loop"))
+		{
+			audioEmitter.loop = (ALboolean)currentAudioEmitter["loop"].get<bool>();
+		}
+		if (currentAudioEmitter.contains("gain"))
+		{
+			audioEmitter.gain = (ALfloat)currentAudioEmitter["gain"].get<float>();
+		}
+
 		g_audioEmitters.push_back(audioEmitter);
 
 		printf("Info: Created audio emitter for audio source %u\n", audioEmitter.audioSourceIndex);
@@ -369,8 +490,10 @@ int main(int argc, char *argv[])
 
 	//
 
-	for (auto& currentScene : glTF["scenes"])
+	if (glTF.contains("scene"))
 	{
+		json& currentScene = glTF["scenes"][glTF["scene"].get<uint32_t>()];
+
 		if (currentScene.contains("extensions"))
 		{
 			if (currentScene["extensions"].contains("OMI_audio_emitter"))
@@ -379,11 +502,10 @@ int main(int argc, char *argv[])
 
 				for (auto& currentAudioEmitter : audioEmitters)
 				{
-					uint32_t audioEmitterIndex = currentAudioEmitter.get<uint32_t>();
-
 					AudioEmitterInstance audioEmitterInstance;
+					audioEmitterInstance.audioEmitterIndex = currentAudioEmitter.get<uint32_t>();
 
-					audioEmitterInstance.source = createAudioSource((ALint)g_audioSources[g_audioEmitters[audioEmitterIndex].audioSourceIndex].buffer);
+					audioEmitterInstance.source = createAudioSource(g_audioEmitters[audioEmitterInstance.audioEmitterIndex]);
 					if (!audioEmitterInstance.source)
 					{
 						shutdownAudio();
@@ -393,52 +515,65 @@ int main(int argc, char *argv[])
 
 					g_audioEmitterInstances.push_back(audioEmitterInstance);
 
-					printf("Info: Created instance for audio emitter %u required for scene\n", audioEmitterIndex);
+					printf("Info: Created instance for audio emitter %u required for scene\n", audioEmitterInstance.audioEmitterIndex);
 				}
 			}
 		}
-	}
 
-	for (auto& currentNode : glTF["nodes"])
-	{
-		if (currentNode.contains("extensions"))
+		//
+
+		if (currentScene.contains("nodes"))
 		{
-			if (currentNode["extensions"].contains("OMI_audio_emitter"))
+			glm::mat4 world(1.0f);
+
+			if (!handleNodes(currentScene["nodes"], glTF, world))
 			{
-				json& audioEmitter = currentNode["extensions"]["OMI_audio_emitter"]["audioEmitter"];
+				shutdownAudio();
 
-				uint32_t audioEmitterIndex = audioEmitter.get<uint32_t>();
-
-				AudioEmitterInstance audioEmitterInstance;
-
-				audioEmitterInstance.source = createAudioSource((ALint)g_audioSources[g_audioEmitters[audioEmitterIndex].audioSourceIndex].buffer);
-				if (!audioEmitterInstance.source)
-				{
-					shutdownAudio();
-
-					return -1;
-				}
-
-				g_audioEmitterInstances.push_back(audioEmitterInstance);
-
-				printf("Info: Created instance for audio emitter %u required for node\n", audioEmitterIndex);
+				return -1;
 			}
 		}
 	}
 
 	//
-	// Test
+	// Start playing, if emitter is set
 	//
 
-	ALint state;
 	for (auto& audioEmitterInstance : g_audioEmitterInstances)
 	{
-		alSourcePlay(audioEmitterInstance.source);
-		do {
-			std::this_thread::yield();
-			alGetSourcei(audioEmitterInstance.source, AL_SOURCE_STATE, &state);
-		} while(alGetError() == AL_NO_ERROR && state == AL_PLAYING);
+		AudioEmitter& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
+
+		if (audioEmitter.playing)
+		{
+			alSourcePlay(audioEmitterInstance.source);
+		}
 	}
+
+	//
+	// Play, until all emitter instances are not playing anymore. Can be infinite, if one is looping
+	//
+
+	bool loop;
+	do {
+		std::this_thread::yield();
+		loop = false;
+
+		for (auto& audioEmitterInstance : g_audioEmitterInstances)
+		{
+			ALint state;
+			alGetSourcei(audioEmitterInstance.source, AL_SOURCE_STATE, &state);
+
+			if (state == AL_PLAYING)
+			{
+				loop = true;
+			}
+
+			if (alGetError() != AL_NO_ERROR)
+			{
+				loop = false;
+			}
+		}
+	} while(loop);
 
 	//
 	// OpenAL shutdown

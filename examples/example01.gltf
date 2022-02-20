@@ -1,4 +1,7 @@
 {
+	"asset": {
+		"version": "2.0"
+	},
   "extensions": {
     "OMI_audio_emitter": {
       "audioSources": [
@@ -23,9 +26,9 @@
         {
           "name": "duck emitter",
           "type": "positional",
-          "gain": 0.8,
+          "gain": 0.5,
           "loop": false,
-          "playing": false,
+          "playing": true,
           "source": 1,
           "coneInnerAngle": 6.283185307179586,
           "coneOuterAngle": 6.283185307179586,
@@ -38,9 +41,13 @@
       ]
     }
   },
+	"scene": 0,
   "scenes": [
     {
       "name": "Default Scene",
+			"nodes": [
+				0
+			],
       "extensions": {
         "OMI_audio_emitter": {
           "audioEmitters": [
@@ -54,9 +61,9 @@
     {
       "name": "Duck",
       "translation": [
-	      1,
-        2,
-	      3
+	      10,
+          0,
+	      0
 	    ],
       "extensions": {
         "OMI_audio_emitter": {
@@ -64,5 +71,11 @@
         }
       }
     }
+  ],
+  "extensionsRequired": [
+    "OMI_audio_emitter"
+  ],
+  "extensionsUsed": [
+    "OMI_audio_emitter"
   ]
 }

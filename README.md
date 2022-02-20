@@ -7,6 +7,7 @@ At a later point of time, this will be resolved by adding a CMake file plus maki
 This project is a research project to evaluate a possible integration of this extension into [Gestaltor](https://gestaltor.io/).  
   
 ## Required libraries for MSYS2
+`pacman -S mingw-w64-x86_64-glm`  
 `pacman -S mingw-w64-x86_64-mpg123`  
 `pacman -S mingw-w64-x86_64-nlohmann-json`  
 `pacman -S mingw-w64-x86_64-openal`  
@@ -14,6 +15,8 @@ This project is a research project to evaluate a possible integration of this ex
 ## References
 Eclipse  
 https://www.eclipse.org/  
+glm  
+https://github.com/g-truc/glm  
 JSON  
 https://github.com/nlohmann/json  
 mpg123  
