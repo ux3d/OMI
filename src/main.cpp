@@ -1,9 +1,11 @@
+#include <cinttypes>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
 
-#include <sndfile.h>
+#include <mpg123.h>
 
 #include <AL/al.h>
 #include <AL/alext.h>
@@ -29,6 +31,90 @@ bool loadFile(std::string& output, const std::string& filename)
 	file.close();
 
 	return true;
+}
+
+ALuint createSound(const std::string& filename)
+{
+	// MPG123 for decoding
+
+	if (mpg123_init() != MPG123_OK)
+	{
+		return 0;
+	}
+
+	mpg123_handle* handle = mpg123_new(0, 0);
+	if (!handle)
+	{
+		return 0;
+	}
+
+	size_t buffer_size = mpg123_outblock(handle);
+	std::vector<uint8_t> buffer_read(buffer_size);
+
+	if (mpg123_open(handle, filename.c_str()) != MPG123_OK)
+	{
+		mpg123_delete(handle);
+
+		return 0;
+	}
+
+	long rate;
+	int channels, encoding;
+	if (mpg123_getformat(handle, &rate, &channels, &encoding) != MPG123_OK)
+	{
+		mpg123_delete(handle);
+
+		return 0;
+	}
+
+	size_t done;
+	std::vector<uint8_t> decoded;
+	while (mpg123_read(handle, buffer_read.data(), buffer_size, &done) == MPG123_OK)
+	{
+		decoded.insert(decoded.end(), buffer_read.begin(), buffer_read.end());
+	}
+
+	mpg123_delete(handle);
+	mpg123_exit();
+
+	// OpenAL buffer creation
+
+	ALenum format = AL_NONE;
+
+	if(channels == 1)
+	{
+		format = AL_FORMAT_MONO16;
+	}
+	else if(channels == 2)
+	{
+		format = AL_FORMAT_STEREO16;
+	}
+	else
+	{
+		printf("Error: Unsupported channel count %d\n", channels);
+
+		return 0;
+	}
+
+	ALuint buffer;
+	alGenBuffers(1, &buffer);
+
+	alBufferData(buffer, format, decoded.data(), decoded.size(), rate);
+
+	ALenum error = alGetError();
+	if(error != AL_NO_ERROR)
+	{
+		printf("Error: OpenAL %s\n", alGetString(error));
+
+		if(buffer && alIsBuffer(buffer))
+		{
+			alDeleteBuffers(1, &buffer);
+		}
+
+		return 0;
+	}
+
+    return buffer;
 }
 
 int main(int argc, char *argv[])
@@ -97,7 +183,7 @@ int main(int argc, char *argv[])
 
 	// For now on, we expect the glTF does contain valid and the required data.
 
-	std::vector<std::string> audoSources;
+	std::vector<ALuint> audioSources;
 
 	json& OMI_audio_emitter = extensions["OMI_audio_emitter"];
 	for (auto& audioSource : OMI_audio_emitter["audioSources"])
@@ -119,18 +205,24 @@ int main(int argc, char *argv[])
 		std::string uri = audioSource["uri"].get<std::string>();
 		loadFilename = parentPath + uri;
 
-		std::string mpeg;
-		if (!loadFile(mpeg, loadFilename))
+		ALuint soundBuffer = createSound(loadFilename.c_str());
+		if (soundBuffer == 0)
 		{
-			printf("Error: Could not load mpeg file '%s'\n", loadFilename.c_str());
+			printf("Error: Could not create sound for file '%s'\n", loadFilename.c_str());
 
 			return -1;
 		}
+		audioSources.push_back(soundBuffer);
 
 		printf("Info: Loaded audio source with uri '%s'\n", uri.c_str());
 	}
 
 	// OpenAL shutdown
+
+	for (ALuint buffer : audioSources)
+	{
+		alDeleteBuffers(1, &buffer);
+	}
 
 	alcMakeContextCurrent(0);
 
