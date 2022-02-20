@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <mpg123.h>
@@ -13,6 +14,19 @@
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
+
+//
+// Globals
+//
+
+static ALCdevice* g_device = 0;
+static ALCcontext* g_context = 0;
+static std::vector<ALuint> g_audioBuffers;
+static std::vector<ALuint> g_audioSources;
+
+//
+// Functions
+//
 
 bool loadFile(std::string& output, const std::string& filename)
 {
@@ -33,9 +47,11 @@ bool loadFile(std::string& output, const std::string& filename)
 	return true;
 }
 
-ALuint createSound(const std::string& filename)
+ALuint createAudioBuffer(const std::string& filename)
 {
-	// MPG123 for decoding
+	//
+	// mpg123 for decoding
+	//
 
 	if (mpg123_init() != MPG123_OK)
 	{
@@ -67,8 +83,9 @@ ALuint createSound(const std::string& filename)
 		return 0;
 	}
 
-	size_t done;
 	std::vector<uint8_t> decoded;
+
+	size_t done;
 	while (mpg123_read(handle, buffer_read.data(), buffer_size, &done) == MPG123_OK)
 	{
 		decoded.insert(decoded.end(), buffer_read.begin(), buffer_read.end());
@@ -77,7 +94,9 @@ ALuint createSound(const std::string& filename)
 	mpg123_delete(handle);
 	mpg123_exit();
 
+	//
 	// OpenAL buffer creation
+	//
 
 	ALenum format = AL_NONE;
 
@@ -117,35 +136,66 @@ ALuint createSound(const std::string& filename)
     return buffer;
 }
 
+void shutdownAudio()
+{
+	for (ALuint source : g_audioSources)
+	{
+		alDeleteSources(1, &source);
+	}
+
+	for (ALuint buffer : g_audioBuffers)
+	{
+		alDeleteBuffers(1, &buffer);
+	}
+
+	if (g_context)
+	{
+		alcMakeContextCurrent(0);
+
+		alcDestroyContext(g_context);
+	}
+
+	if (g_device)
+	{
+		alcCloseDevice(g_device);
+	}
+}
+
+//
+// Main entry
+//
+
 int main(int argc, char *argv[])
 {
-	// OpenAL init
+	printf("Info: Starting\n");
 
-	ALCdevice* device = 0;
-	ALCcontext* context = 0;
+	//
+	// OpenAL initializing
+	//
 
-	device = alcOpenDevice(NULL);
-	if(!device)
+	g_device = alcOpenDevice(NULL);
+	if(!g_device)
 	{
 		printf("Error: Could not open device\n");
 
 		return 1;
 	}
 
-	context = alcCreateContext(device, 0);
-	if(!context)
+	g_context = alcCreateContext(g_device, 0);
+	if(!g_context)
 	{
 		printf("Error: Could not create context\n");
+
+		shutdownAudio();
 
 		return 1;
 	}
 
-	if (alcMakeContextCurrent(context) == ALC_FALSE)
+	if (alcMakeContextCurrent(g_context) == ALC_FALSE)
 	{
         printf("Error: Could not set context\n");
 
-        alcDestroyContext(context);
-        alcCloseDevice(device);
+        shutdownAudio();
 
         return 1;
 	}
@@ -162,6 +212,8 @@ int main(int argc, char *argv[])
 	{
 		printf("Error: Could not load glTF file '%s'\n", loadFilename.c_str());
 
+		shutdownAudio();
+
 		return -1;
 	}
 
@@ -169,6 +221,8 @@ int main(int argc, char *argv[])
 	if (!glTF.contains("extensions"))
 	{
 		printf("Error: glTF does not contain any extensions\n");
+
+		shutdownAudio();
 
 		return -1;
 	}
@@ -178,12 +232,12 @@ int main(int argc, char *argv[])
 	{
 		printf("Error: glTF does not contain the OMI_audio_emitter extension\n");
 
+		shutdownAudio();
+
 		return -1;
 	}
 
 	// For now on, we expect the glTF does contain valid and the required data.
-
-	std::vector<ALuint> audioSources;
 
 	json& OMI_audio_emitter = extensions["OMI_audio_emitter"];
 	for (auto& audioSource : OMI_audio_emitter["audioSources"])
@@ -192,6 +246,8 @@ int main(int argc, char *argv[])
 		{
 			printf("Error: Only supporting audioSource with uri\n");
 
+			shutdownAudio();
+
 			return -1;
 		}
 
@@ -199,35 +255,66 @@ int main(int argc, char *argv[])
 		{
 			printf("Error: Only supporting audioSource with uri containing a filename\n");
 
+			shutdownAudio();
+
 			return -1;
 		}
 
 		std::string uri = audioSource["uri"].get<std::string>();
 		loadFilename = parentPath + uri;
 
-		ALuint soundBuffer = createSound(loadFilename.c_str());
-		if (soundBuffer == 0)
+		ALuint audioBuffer = createAudioBuffer(loadFilename.c_str());
+		if (audioBuffer == 0)
 		{
 			printf("Error: Could not create sound for file '%s'\n", loadFilename.c_str());
 
+			shutdownAudio();
+
 			return -1;
 		}
-		audioSources.push_back(soundBuffer);
+		g_audioBuffers.push_back(audioBuffer);
 
 		printf("Info: Loaded audio source with uri '%s'\n", uri.c_str());
 	}
 
-	// OpenAL shutdown
+	//
 
-	for (ALuint buffer : audioSources)
+
+	for (ALuint buffer : g_audioBuffers)
 	{
-		alDeleteBuffers(1, &buffer);
+		ALuint audioSource = 0;
+	    alGenSources(1, &audioSource);
+	    alSourcei(audioSource, AL_BUFFER, (ALint)buffer);
+
+	    if (alGetError() != AL_NO_ERROR)
+	    {
+	    	shutdownAudio();
+
+	    	return -1;
+	    }
+
+	    g_audioSources.push_back(audioSource);
 	}
 
-	alcMakeContextCurrent(0);
+	//
+	// Test
+	//
 
-	alcDestroyContext(context);
-	alcCloseDevice(device);
+	ALint state;
+	for (ALuint source : g_audioSources)
+	{
+		alSourcePlay(source);
+		do {
+			std::this_thread::yield();
+			alGetSourcei(source, AL_SOURCE_STATE, &state);
+		} while(alGetError() == AL_NO_ERROR && state == AL_PLAYING);
+	}
+
+	//
+	// OpenAL shutdown
+	//
+
+	shutdownAudio();
 
 	//
 
