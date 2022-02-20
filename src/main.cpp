@@ -15,6 +15,18 @@
 
 using json = nlohmann::json;
 
+struct DecomposedPath {
+	std::string parentPath = "";
+	std::string stem = "";
+	std::string extension = "";
+};
+
+struct AudioData {
+	std::vector<uint8_t> decoded;
+	int32_t frequency;
+	int32_t channels;
+};
+
 //
 // Globals
 //
@@ -27,6 +39,20 @@ static std::vector<ALuint> g_audioSources;
 //
 // Functions
 //
+
+void decomposePath(DecomposedPath& decomposedPath, const std::string& path)
+{
+	std::filesystem::path filesystemPath(path);
+
+	decomposedPath.parentPath = filesystemPath.parent_path().generic_string();
+	decomposedPath.stem = filesystemPath.stem().generic_string();
+	decomposedPath.extension = filesystemPath.extension().generic_string();
+
+	if (decomposedPath.parentPath.size() > 0 && (decomposedPath.parentPath.back() != '/' || decomposedPath.parentPath.back() != '\\'))
+	{
+		decomposedPath.parentPath += "/";
+	}
+}
 
 bool loadFile(std::string& output, const std::string& filename)
 {
@@ -47,7 +73,7 @@ bool loadFile(std::string& output, const std::string& filename)
 	return true;
 }
 
-ALuint createAudioBuffer(const std::string& filename)
+bool decodeAudio(AudioData& audioData, const std::string& filename)
 {
 	//
 	// mpg123 for decoding
@@ -55,13 +81,13 @@ ALuint createAudioBuffer(const std::string& filename)
 
 	if (mpg123_init() != MPG123_OK)
 	{
-		return 0;
+		return false;
 	}
 
 	mpg123_handle* handle = mpg123_new(0, 0);
 	if (!handle)
 	{
-		return 0;
+		return false;
 	}
 
 	size_t buffer_size = mpg123_outblock(handle);
@@ -71,7 +97,7 @@ ALuint createAudioBuffer(const std::string& filename)
 	{
 		mpg123_delete(handle);
 
-		return 0;
+		return false;
 	}
 
 	long rate;
@@ -80,37 +106,42 @@ ALuint createAudioBuffer(const std::string& filename)
 	{
 		mpg123_delete(handle);
 
-		return 0;
+		return false;
 	}
-
-	std::vector<uint8_t> decoded;
 
 	size_t done;
 	while (mpg123_read(handle, buffer_read.data(), buffer_size, &done) == MPG123_OK)
 	{
-		decoded.insert(decoded.end(), buffer_read.begin(), buffer_read.end());
+		audioData.decoded.insert(audioData.decoded.end(), buffer_read.begin(), buffer_read.end());
 	}
+	audioData.frequency = (int32_t)rate;
+	audioData.channels = (int32_t)channels;
 
 	mpg123_delete(handle);
 	mpg123_exit();
 
+	return true;
+}
+
+ALuint createAudioBuffer(const AudioData& audioData)
+{
 	//
 	// OpenAL buffer creation
 	//
 
 	ALenum format = AL_NONE;
 
-	if(channels == 1)
+	if(audioData.channels == 1)
 	{
 		format = AL_FORMAT_MONO16;
 	}
-	else if(channels == 2)
+	else if(audioData.channels == 2)
 	{
 		format = AL_FORMAT_STEREO16;
 	}
 	else
 	{
-		printf("Error: Unsupported channel count %d\n", channels);
+		printf("Error: Unsupported channel count %d\n", audioData.channels);
 
 		return 0;
 	}
@@ -118,7 +149,7 @@ ALuint createAudioBuffer(const std::string& filename)
 	ALuint buffer;
 	alGenBuffers(1, &buffer);
 
-	alBufferData(buffer, format, decoded.data(), decoded.size(), rate);
+	alBufferData(buffer, format, audioData.decoded.data(), audioData.decoded.size(), audioData.frequency);
 
 	ALenum error = alGetError();
 	if(error != AL_NO_ERROR)
@@ -167,7 +198,14 @@ void shutdownAudio()
 
 int main(int argc, char *argv[])
 {
-	printf("Info: Starting\n");
+	std::string filename = "example01.gltf";
+	if (argc > 1)
+	{
+		filename = argv[1];
+	}
+
+	DecomposedPath decomposedFilename;
+	decomposePath(decomposedFilename, filename);
 
 	//
 	// OpenAL initializing
@@ -201,11 +239,10 @@ int main(int argc, char *argv[])
 	}
 
 	//
+	// glTF loading and interpreting
+	//
 
-	std::string parentPath = "";
-	std::string exampleFilename = "example01.gltf";
-
-	std::string loadFilename = parentPath + exampleFilename;
+	std::string loadFilename = decomposedFilename.parentPath + decomposedFilename.stem + decomposedFilename.extension;
 
 	std::string gltfContent;
 	if (!loadFile(gltfContent, loadFilename))
@@ -237,7 +274,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	// For now on, we expect the glTF does contain valid and the required data.
+	// For now on, we expect the glTF is valid and does contain the required data
 
 	json& OMI_audio_emitter = extensions["OMI_audio_emitter"];
 	for (auto& audioSource : OMI_audio_emitter["audioSources"])
@@ -261,12 +298,23 @@ int main(int argc, char *argv[])
 		}
 
 		std::string uri = audioSource["uri"].get<std::string>();
-		loadFilename = parentPath + uri;
 
-		ALuint audioBuffer = createAudioBuffer(loadFilename.c_str());
+		loadFilename = decomposedFilename.parentPath + uri;
+
+		AudioData audioData;
+		if (!decodeAudio(audioData, loadFilename))
+		{
+			printf("Error: Could not decode audio data for uri '%s'\n", uri.c_str());
+
+			shutdownAudio();
+
+			return -1;
+		}
+
+		ALuint audioBuffer = createAudioBuffer(audioData);
 		if (audioBuffer == 0)
 		{
-			printf("Error: Could not create sound for file '%s'\n", loadFilename.c_str());
+			printf("Error: Could not create audio buffer for uri '%s'\n", uri.c_str());
 
 			shutdownAudio();
 
@@ -315,10 +363,6 @@ int main(int argc, char *argv[])
 	//
 
 	shutdownAudio();
-
-	//
-
-	printf("Info: Done\n");
 
 	return 0;
 }
