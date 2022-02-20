@@ -1,0 +1,6 @@
+[submodule "thirdparty/json"]
+	path = thirdparty/json
+	url = git@github.com:nlohmann/json.git
+[submodule "thirdparty/openal-soft"]
+	path = thirdparty/openal-soft
+	url = git@github.com:kcat/openal-soft.git
