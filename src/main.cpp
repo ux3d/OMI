@@ -41,11 +41,15 @@ struct AudioEmitter {
 	ALfloat rolloffFactor = 1.0f;
 };
 
+struct Node {
+	glm::vec4 position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+};
+
 struct AudioEmitterInstance {
 	uint32_t audioEmitterIndex;
 	ALuint source;
 	//
-	glm::vec4 position;
+	uint32_t nodeIndex;
 };
 
 //
@@ -57,6 +61,7 @@ static ALCcontext* g_context = 0;
 static std::vector<AudioSource> g_audioSources;
 static std::vector<AudioEmitter> g_audioEmitters;
 static std::vector<AudioEmitterInstance> g_audioEmitterInstances;
+static std::vector<Node> g_nodes;
 
 static glm::vec4 g_listenerPosition(0.0f, 0.0f, 0.0f, 1.0f);
 static glm::vec3 g_listenerVelocity(0.0f, 0.0f, 0.0f);
@@ -160,7 +165,7 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 
 		glm::mat4 local = matrixTranslation * matrixRotation * matrixScale;
 		glm::mat4 world = parent * local;
-		glm::vec4 currentPosition = world * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		g_nodes[currentNodeIndex.get<uint32_t>()].position = world * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
 		//
 
@@ -180,7 +185,7 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 					return false;
 				}
 
-				audioEmitterInstance.position = currentPosition;
+				audioEmitterInstance.nodeIndex = currentNodeIndex.get<uint32_t>();
 
 				g_audioEmitterInstances.push_back(audioEmitterInstance);
 
@@ -431,6 +436,13 @@ int main(int argc, char *argv[])
 
 	//
 
+	if (glTF.contains("nodes"))
+	{
+		g_nodes.resize(glTF["nodes"].size());
+	}
+
+	//
+
 	if (glTF.contains("scene"))
 	{
 		json& currentScene = glTF["scenes"][glTF["scene"].get<uint32_t>()];
@@ -515,7 +527,7 @@ int main(int argc, char *argv[])
 			{
 				float finalGain = audioEmitter.gain;
 
-				ALfloat distance = glm::distance(audioEmitterInstance.position, g_listenerPosition);
+				ALfloat distance = glm::distance(g_nodes[audioEmitterInstance.nodeIndex].position, g_listenerPosition);
 
 				if (audioEmitter.distanceModel == "linear")
 				{
@@ -531,7 +543,7 @@ int main(int argc, char *argv[])
 				}
 
 				alSourcef(audioEmitterInstance.source, AL_GAIN, finalGain);
-				alSourcefv(audioEmitterInstance.source, AL_POSITION, glm::value_ptr(audioEmitterInstance.position));
+				alSourcefv(audioEmitterInstance.source, AL_POSITION, glm::value_ptr(g_nodes[audioEmitterInstance.nodeIndex].position));
 			}
 
 			//
