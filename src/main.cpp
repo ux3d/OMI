@@ -224,6 +224,14 @@ bool setupAudio()
 	// OMI_audio_emitter requires a distance model per source, so we do it manually
 	alDistanceModel(AL_NONE);
 
+	ALenum error = alGetError();
+	if (error != AL_NO_ERROR)
+	{
+		printf("Error: OpenAL %s\n", alGetString(error));
+
+		return false;
+	}
+
 	return true;
 }
 
