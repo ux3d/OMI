@@ -72,9 +72,6 @@
       }
     }
   ],
-  "extensionsRequired": [
-    "OMI_audio_emitter"
-  ],
   "extensionsUsed": [
     "OMI_audio_emitter"
   ]
