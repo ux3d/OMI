@@ -123,51 +123,11 @@ ALuint createAudioSource(const AudioEmitter& audioEmitter)
 	return source;
 }
 
-bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
+bool createAudioEmitterInstances(json& nodes, json& glTF)
 {
 	for (auto& currentNodeIndex : nodes)
 	{
 		json& currentNode = glTF["nodes"][currentNodeIndex.get<uint32_t>()];
-
-		glm::mat4 matrixTranslation(1.0f);
-		if (currentNode.contains("translation"))
-		{
-			glm::vec3 translation;
-			translation.x = currentNode["translation"][0].get<float>();
-			translation.y = currentNode["translation"][1].get<float>();
-			translation.t = currentNode["translation"][2].get<float>();
-
-			matrixTranslation = glm::translate(translation);
-		}
-
-		glm::mat4 matrixRotation(1.0f);
-		if (currentNode.contains("rotation"))
-		{
-			glm::quat rotation;
-			rotation.w = currentNode["rotation"][3].get<float>();
-			rotation.x = currentNode["rotation"][0].get<float>();
-			rotation.y = currentNode["rotation"][1].get<float>();
-			rotation.z = currentNode["rotation"][2].get<float>();
-
-			matrixTranslation = glm::toMat4(rotation);
-		}
-
-		glm::mat4 matrixScale(1.0f);
-		if (currentNode.contains("scale"))
-		{
-			glm::vec3 scale;
-			scale.x = currentNode["scale"][0].get<float>();
-			scale.y = currentNode["scale"][1].get<float>();
-			scale.t = currentNode["scale"][2].get<float>();
-
-			matrixTranslation = glm::scale(scale);
-		}
-
-		glm::mat4 local = matrixTranslation * matrixRotation * matrixScale;
-		glm::mat4 world = parent * local;
-		g_nodes[currentNodeIndex.get<uint32_t>()].position = world * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-
-		//
 
 		if (currentNode.contains("extensions"))
 		{
@@ -197,7 +157,7 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 
 		if (currentNode.contains("children"))
 		{
-			if (!handleNodes(currentNode["children"], glTF, world))
+			if (!createAudioEmitterInstances(currentNode["children"], glTF))
 			{
 				return false;
 			}
@@ -264,6 +224,60 @@ void shutdownAudio()
 	if (g_device)
 	{
 		alcCloseDevice(g_device);
+	}
+}
+
+void updateNodes(json& nodes, json& glTF, glm::mat4& parent)
+{
+	for (auto& currentNodeIndex : nodes)
+	{
+		json& currentNode = glTF["nodes"][currentNodeIndex.get<uint32_t>()];
+
+		glm::mat4 matrixTranslation(1.0f);
+		if (currentNode.contains("translation"))
+		{
+			glm::vec3 translation;
+			translation.x = currentNode["translation"][0].get<float>();
+			translation.y = currentNode["translation"][1].get<float>();
+			translation.t = currentNode["translation"][2].get<float>();
+
+			matrixTranslation = glm::translate(translation);
+		}
+
+		glm::mat4 matrixRotation(1.0f);
+		if (currentNode.contains("rotation"))
+		{
+			glm::quat rotation;
+			rotation.w = currentNode["rotation"][3].get<float>();
+			rotation.x = currentNode["rotation"][0].get<float>();
+			rotation.y = currentNode["rotation"][1].get<float>();
+			rotation.z = currentNode["rotation"][2].get<float>();
+
+			matrixTranslation = glm::toMat4(rotation);
+		}
+
+		glm::mat4 matrixScale(1.0f);
+		if (currentNode.contains("scale"))
+		{
+			glm::vec3 scale;
+			scale.x = currentNode["scale"][0].get<float>();
+			scale.y = currentNode["scale"][1].get<float>();
+			scale.t = currentNode["scale"][2].get<float>();
+
+			matrixTranslation = glm::scale(scale);
+		}
+
+		glm::mat4 local = matrixTranslation * matrixRotation * matrixScale;
+		glm::mat4 world = parent * local;
+
+		g_nodes[currentNodeIndex.get<uint32_t>()].position = world * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+		//
+
+		if (currentNode.contains("children"))
+		{
+			updateNodes(currentNode["children"], glTF, world);
+		}
 	}
 }
 
@@ -480,88 +494,105 @@ int main(int argc, char *argv[])
 		{
 			glm::mat4 world(1.0f);
 
-			if (!handleNodes(currentScene["nodes"], glTF, world))
+			if (!createAudioEmitterInstances(currentScene["nodes"], glTF))
 			{
 				shutdownAudio();
 
 				return -1;
 			}
 		}
-	}
 
-	//
-	// Start playing, if emitter is set
-	//
+		//
 
-	for (auto& audioEmitterInstance : g_audioEmitterInstances)
-	{
-		AudioEmitter& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
-
-		if (audioEmitter.playing)
-		{
-			alSourcePlay(audioEmitterInstance.source);
-		}
-	}
-
-	//
-	// Play, until all emitter instances are not playing anymore. Can be infinite, if one is looping
-	//
-
-	bool loop;
-	do {
-		std::this_thread::yield();
-		loop = false;
-
-		// Position etc. of listener
-		alListenerfv(AL_POSITION, glm::value_ptr(g_listenerPosition));
-		alListenerfv(AL_VELOCITY, glm::value_ptr(g_listenerVelocity));
-		ALfloat listenerOrientation[6] = {g_listenerForward.x, g_listenerForward.y, g_listenerForward.z, g_listenerUp.x, g_listenerUp.y, g_listenerUp.z};
-		alListenerfv(AL_ORIENTATION, listenerOrientation);
+		//
+		// Start playing, if emitter is set
+		//
 
 		for (auto& audioEmitterInstance : g_audioEmitterInstances)
 		{
-			auto& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
+			AudioEmitter& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
 
-			// Positional audio emitter
-			if (audioEmitter.type == "positional")
+			if (audioEmitter.playing)
 			{
-				float finalGain = audioEmitter.gain;
+				alSourcePlay(audioEmitterInstance.source);
+			}
+		}
 
-				ALfloat distance = glm::distance(g_nodes[audioEmitterInstance.nodeIndex].position, g_listenerPosition);
+		//
+		// Play, until all emitter instances are not playing anymore. Can be infinite, if one is looping
+		//
 
-				if (audioEmitter.distanceModel == "linear")
-				{
-					finalGain *= 1.0f - audioEmitter.rolloffFactor * (distance - audioEmitter.refDistance) / (audioEmitter.maxDistance - audioEmitter.refDistance);
-				}
-				else if (audioEmitter.distanceModel == "inverse")
-				{
-					finalGain *= audioEmitter.refDistance / (audioEmitter.refDistance + audioEmitter.rolloffFactor * (glm::max(distance, audioEmitter.refDistance) - audioEmitter.refDistance));
-				}
-				else if (audioEmitter.distanceModel == "exponential")
-				{
-					finalGain *= powf(glm::max(distance, audioEmitter.refDistance) / audioEmitter.refDistance, -audioEmitter.rolloffFactor);
-				}
+		bool loop;
+		do {
+			std::this_thread::yield();
+			loop = false;
 
-				alSourcef(audioEmitterInstance.source, AL_GAIN, finalGain);
-				alSourcefv(audioEmitterInstance.source, AL_POSITION, glm::value_ptr(g_nodes[audioEmitterInstance.nodeIndex].position));
+			// Note: Here one could update the listener position depending on user input
+
+			// Position etc. of listener
+			alListenerfv(AL_POSITION, glm::value_ptr(g_listenerPosition));
+			alListenerfv(AL_VELOCITY, glm::value_ptr(g_listenerVelocity));
+			ALfloat listenerOrientation[6] = {g_listenerForward.x, g_listenerForward.y, g_listenerForward.z, g_listenerUp.x, g_listenerUp.y, g_listenerUp.z};
+			alListenerfv(AL_ORIENTATION, listenerOrientation);
+
+			//
+
+			// Note: Here one could update the node transforms with animations
+
+			if (currentScene.contains("nodes"))
+			{
+				glm::mat4 world(1.0f);
+
+				updateNodes(currentScene["nodes"], glTF, world);
 			}
 
 			//
 
-			ALint state;
-			alGetSourcei(audioEmitterInstance.source, AL_SOURCE_STATE, &state);
-
-			if (state == AL_PLAYING)
+			for (auto& audioEmitterInstance : g_audioEmitterInstances)
 			{
-				loop = true;
-			}
+				auto& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
 
-			if (alGetError() != AL_NO_ERROR)
-			{
-				loop = false;
+				// Positional audio emitter
+				if (audioEmitter.type == "positional")
+				{
+					float finalGain = audioEmitter.gain;
+
+					ALfloat distance = glm::distance(g_nodes[audioEmitterInstance.nodeIndex].position, g_listenerPosition);
+
+					if (audioEmitter.distanceModel == "linear")
+					{
+						finalGain *= 1.0f - audioEmitter.rolloffFactor * (distance - audioEmitter.refDistance) / (audioEmitter.maxDistance - audioEmitter.refDistance);
+					}
+					else if (audioEmitter.distanceModel == "inverse")
+					{
+						finalGain *= audioEmitter.refDistance / (audioEmitter.refDistance + audioEmitter.rolloffFactor * (glm::max(distance, audioEmitter.refDistance) - audioEmitter.refDistance));
+					}
+					else if (audioEmitter.distanceModel == "exponential")
+					{
+						finalGain *= powf(glm::max(distance, audioEmitter.refDistance) / audioEmitter.refDistance, -audioEmitter.rolloffFactor);
+					}
+
+					alSourcef(audioEmitterInstance.source, AL_GAIN, finalGain);
+					alSourcefv(audioEmitterInstance.source, AL_POSITION, glm::value_ptr(g_nodes[audioEmitterInstance.nodeIndex].position));
+				}
+
+				//
+
+				ALint state;
+				alGetSourcei(audioEmitterInstance.source, AL_SOURCE_STATE, &state);
+
+				if (state == AL_PLAYING)
+				{
+					loop = true;
+				}
+
+				if (alGetError() != AL_NO_ERROR)
+				{
+					loop = false;
+				}
 			}
-		}
-	} while(loop);
+		} while(loop);
+	}
 
 	//
 	// Audio shutdown
