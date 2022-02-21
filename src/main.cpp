@@ -1,4 +1,3 @@
-#include <cinttypes>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -71,6 +70,7 @@ static glm::vec3 g_listenerUp(0.0f, 1.0f, 0.0f);
 ALuint createAudioBuffer(const AudioData& audioData)
 {
 	ALuint buffer;
+
 	alGenBuffers(1, &buffer);
 
 	alBufferData(buffer, AL_FORMAT_MONO16, audioData.decoded.data(), audioData.decoded.size(), audioData.frequency);
@@ -102,8 +102,16 @@ ALuint createAudioSource(const AudioEmitter& audioEmitter)
 	alSourcei(source, AL_LOOPING, audioEmitter.loop);
 	alSourcef(source, AL_GAIN, audioEmitter.gain);
 
-	if (alGetError() != AL_NO_ERROR)
+	ALenum error = alGetError();
+	if (error != AL_NO_ERROR)
 	{
+		printf("Error: OpenAL %s\n", alGetString(error));
+
+		if(source && alIsSource(source))
+		{
+			alDeleteSources(1, &source);
+		}
+
 		return 0;
 	}
 
