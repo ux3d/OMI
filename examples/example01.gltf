@@ -26,8 +26,8 @@
         {
           "name": "duck emitter",
           "type": "positional",
-          "gain": 0.5,
-          "loop": false,
+          "gain": 0.8,
+          "loop": true,
           "playing": true,
           "source": 1,
           "coneInnerAngle": 6.283185307179586,
@@ -61,8 +61,8 @@
     {
       "name": "Duck",
       "translation": [
-	      10,
-          0,
+	      5,
+        0,
 	      0
 	    ],
       "extensions": {

@@ -1,4 +1,5 @@
 #include <cinttypes>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -9,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <mpg123.h>
 
@@ -28,7 +30,6 @@ struct DecomposedPath {
 struct AudioData {
 	std::vector<uint8_t> decoded;
 	int32_t frequency;
-	int32_t channels;
 };
 
 struct AudioSource {
@@ -36,17 +37,22 @@ struct AudioSource {
 };
 
 struct AudioEmitter {
+	std::string type = "global";
 	uint32_t audioSourceIndex;
 	bool playing = false;
 	ALboolean loop = AL_FALSE;
 	ALfloat gain = 1.0f;
+	std::string distanceModel = "inverse";
+	ALfloat maxDistance = 10000.0f;
+	ALfloat refDistance = 1.0f;
+	ALfloat rolloffFactor = 1.0f;
 };
 
 struct AudioEmitterInstance {
 	uint32_t audioEmitterIndex;
 	ALuint source;
 	//
-	glm::mat4 world;
+	glm::vec4 position;
 };
 
 //
@@ -58,6 +64,11 @@ static ALCcontext* g_context = 0;
 static std::vector<AudioSource> g_audioSources;
 static std::vector<AudioEmitter> g_audioEmitters;
 static std::vector<AudioEmitterInstance> g_audioEmitterInstances;
+
+static glm::vec4 g_listenerPosition(0.0f, 0.0f, 0.0f, 1.0f);
+static glm::vec3 g_listenerVelocity(0.0f, 0.0f, 0.0f);
+static glm::vec3 g_listenerUp(0.0f, 1.0f, 0.0f);
+static glm::vec3 g_listenerForward(0.0f, 0.0f, -1.0f);
 
 //
 // Functions
@@ -116,7 +127,8 @@ bool decodeAudioData(AudioData& audioData, const std::string& filename)
 	size_t buffer_size = mpg123_outblock(handle);
 	std::vector<uint8_t> buffer_read(buffer_size);
 
-	if (mpg123_open(handle, filename.c_str()) != MPG123_OK)
+	// Force to mono and 16bit
+	if (mpg123_open_fixed(handle, filename.c_str(), MPG123_MONO, MPG123_ENC_SIGNED_16) != MPG123_OK)
 	{
 		mpg123_delete(handle);
 
@@ -138,7 +150,6 @@ bool decodeAudioData(AudioData& audioData, const std::string& filename)
 		audioData.decoded.insert(audioData.decoded.end(), buffer_read.begin(), buffer_read.end());
 	}
 	audioData.frequency = (int32_t)rate;
-	audioData.channels = (int32_t)channels;
 
 	mpg123_delete(handle);
 	mpg123_exit();
@@ -152,27 +163,10 @@ ALuint createAudioBuffer(const AudioData& audioData)
 	// OpenAL buffer creation
 	//
 
-	ALenum format = AL_NONE;
-
-	if(audioData.channels == 1)
-	{
-		format = AL_FORMAT_MONO16;
-	}
-	else if(audioData.channels == 2)
-	{
-		format = AL_FORMAT_STEREO16;
-	}
-	else
-	{
-		printf("Error: Unsupported channel count %d\n", audioData.channels);
-
-		return 0;
-	}
-
 	ALuint buffer;
 	alGenBuffers(1, &buffer);
 
-	alBufferData(buffer, format, audioData.decoded.data(), audioData.decoded.size(), audioData.frequency);
+	alBufferData(buffer, AL_FORMAT_MONO16, audioData.decoded.data(), audioData.decoded.size(), audioData.frequency);
 
 	ALenum error = alGetError();
 	if(error != AL_NO_ERROR)
@@ -269,9 +263,7 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 				{
 					return false;
 				}
-
-				ALfloat position[3] = {currentPosition.x, currentPosition.y, currentPosition.z};
-				alSourcefv(audioEmitterInstance.source, AL_POSITION, position);
+				audioEmitterInstance.position = currentPosition;
 
 				g_audioEmitterInstances.push_back(audioEmitterInstance);
 
@@ -366,12 +358,8 @@ int main(int argc, char *argv[])
         return 1;
 	}
 
-	ALfloat listenerPosition[3] = {0.0f, 0.0f, 0.0f};
-	ALfloat listenerVelocity[3] = {0.0f, 0.0f, 0.0f};
-	ALfloat listenerOrientation[6] = {0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f};
-	alListenerfv(AL_POSITION, listenerPosition);
-	alListenerfv(AL_VELOCITY, listenerVelocity);
-	alListenerfv(AL_ORIENTATION, listenerOrientation);
+	// OMI_audio_emitter requires a distance model per source, so we do it manually
+	alDistanceModel(AL_NONE);
 
 	//
 	// glTF loading and interpreting
@@ -468,8 +456,14 @@ int main(int argc, char *argv[])
 	{
 		AudioEmitter audioEmitter;
 
-		audioEmitter.audioSourceIndex = currentAudioEmitter["source"].get<uint32_t>();
-
+		if (currentAudioEmitter.contains("type"))
+		{
+			audioEmitter.type = currentAudioEmitter["type"].get<std::string>();
+		}
+		if (currentAudioEmitter.contains("source"))
+		{
+			audioEmitter.audioSourceIndex = currentAudioEmitter["source"].get<uint32_t>();
+		}
 		if (currentAudioEmitter.contains("playing"))
 		{
 			audioEmitter.playing = currentAudioEmitter["playing"].get<bool>();
@@ -481,6 +475,22 @@ int main(int argc, char *argv[])
 		if (currentAudioEmitter.contains("gain"))
 		{
 			audioEmitter.gain = (ALfloat)currentAudioEmitter["gain"].get<float>();
+		}
+		if (currentAudioEmitter.contains("distanceModel"))
+		{
+			audioEmitter.distanceModel = currentAudioEmitter["distanceModel"].get<std::string>();
+		}
+		if (currentAudioEmitter.contains("maxDistance"))
+		{
+			audioEmitter.maxDistance = (ALfloat)currentAudioEmitter["maxDistance"].get<float>();
+		}
+		if (currentAudioEmitter.contains("refDistance"))
+		{
+			audioEmitter.refDistance = (ALfloat)currentAudioEmitter["refDistance"].get<float>();
+		}
+		if (currentAudioEmitter.contains("rolloffFactor"))
+		{
+			audioEmitter.rolloffFactor = (ALfloat)currentAudioEmitter["rolloffFactor"].get<float>();
 		}
 
 		g_audioEmitters.push_back(audioEmitter);
@@ -558,8 +568,41 @@ int main(int argc, char *argv[])
 		std::this_thread::yield();
 		loop = false;
 
+		// Listener data
+		alListenerfv(AL_POSITION, glm::value_ptr(g_listenerPosition));
+		alListenerfv(AL_VELOCITY, glm::value_ptr(g_listenerVelocity));
+		ALfloat listenerOrientation[6] = {g_listenerForward.x, g_listenerForward.y, g_listenerForward.z, g_listenerUp.x, g_listenerUp.y, g_listenerUp.z};
+		alListenerfv(AL_ORIENTATION, listenerOrientation);
+
 		for (auto& audioEmitterInstance : g_audioEmitterInstances)
 		{
+			auto& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
+
+			if (audioEmitter.type == "positional")
+			{
+				float finalGain = audioEmitter.gain;
+
+				ALfloat distance = glm::distance(audioEmitterInstance.position, g_listenerPosition);
+
+				if (audioEmitter.distanceModel == "linear")
+				{
+					finalGain *= 1.0f - audioEmitter.rolloffFactor * (distance - audioEmitter.refDistance) / (audioEmitter.maxDistance - audioEmitter.refDistance);
+				}
+				else if (audioEmitter.distanceModel == "inverse")
+				{
+					finalGain *= audioEmitter.refDistance / (audioEmitter.refDistance + audioEmitter.rolloffFactor * (glm::max(distance, audioEmitter.refDistance) - audioEmitter.refDistance));
+				}
+				else if (audioEmitter.distanceModel == "exponential")
+				{
+					finalGain *= powf(glm::max(distance, audioEmitter.refDistance) / audioEmitter.refDistance, -audioEmitter.rolloffFactor);
+				}
+
+				alSourcef(audioEmitterInstance.source, AL_GAIN, finalGain);
+				alSourcefv(audioEmitterInstance.source, AL_POSITION, glm::value_ptr(audioEmitterInstance.position));
+			}
+
+			//
+
 			ALint state;
 			alGetSourcei(audioEmitterInstance.source, AL_SOURCE_STATE, &state);
 
