@@ -25,6 +25,9 @@ using json = nlohmann::json;
 // OMI structures
 //
 
+static const float M_PI = 3.1415926535897932384626433832795f;
+static const float M_2PI = 2.0f * M_PI;
+
 struct AudioSource {
 	ALuint buffer;
 };
@@ -39,10 +42,15 @@ struct AudioEmitter {
 	ALfloat maxDistance = 10000.0f;
 	ALfloat refDistance = 1.0f;
 	ALfloat rolloffFactor = 1.0f;
+	//
+	ALfloat coneInnerAngle = M_2PI;
+	ALfloat coneOuterAngle = M_2PI;
+	ALfloat coneOuterGain = 0.0f;
 };
 
 struct Node {
 	glm::vec4 position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+	glm::vec3 orientation = glm::vec3(0.0f, 0.0f, 1.0f);
 };
 
 struct AudioEmitterInstance {
@@ -233,44 +241,60 @@ void updateNodes(json& nodes, json& glTF, glm::mat4& parent)
 	{
 		json& currentNode = glTF["nodes"][currentNodeIndex.get<uint32_t>()];
 
-		glm::mat4 matrixTranslation(1.0f);
-		if (currentNode.contains("translation"))
-		{
-			glm::vec3 translation;
-			translation.x = currentNode["translation"][0].get<float>();
-			translation.y = currentNode["translation"][1].get<float>();
-			translation.t = currentNode["translation"][2].get<float>();
+		glm::mat4 local(1.0f);
 
-			matrixTranslation = glm::translate(translation);
+		if (currentNode.contains("matrix"))
+		{
+			local = glm::mat4(
+				currentNode["translation"]["matrix"][0].get<float>() , currentNode["translation"]["matrix"][1].get<float>() , currentNode["translation"]["matrix"][2].get<float>() , currentNode["translation"]["matrix"][3].get<float>() ,
+				currentNode["translation"]["matrix"][4].get<float>() , currentNode["translation"]["matrix"][5].get<float>() , currentNode["translation"]["matrix"][6].get<float>() , currentNode["translation"]["matrix"][7].get<float>() ,
+				currentNode["translation"]["matrix"][8].get<float>() , currentNode["translation"]["matrix"][9].get<float>() , currentNode["translation"]["matrix"][10].get<float>(), currentNode["translation"]["matrix"][11].get<float>(),
+				currentNode["translation"]["matrix"][12].get<float>(), currentNode["translation"]["matrix"][13].get<float>(), currentNode["translation"]["matrix"][14].get<float>(), currentNode["translation"]["matrix"][15].get<float>()
+			);
+		}
+		else
+		{
+			glm::mat4 matrixTranslation(1.0f);
+			if (currentNode.contains("translation"))
+			{
+				glm::vec3 translation;
+				translation.x = currentNode["translation"][0].get<float>();
+				translation.y = currentNode["translation"][1].get<float>();
+				translation.t = currentNode["translation"][2].get<float>();
+
+				matrixTranslation = glm::translate(translation);
+			}
+
+			glm::mat4 matrixRotation(1.0f);
+			if (currentNode.contains("rotation"))
+			{
+				glm::quat rotation;
+				rotation.w = currentNode["rotation"][3].get<float>();
+				rotation.x = currentNode["rotation"][0].get<float>();
+				rotation.y = currentNode["rotation"][1].get<float>();
+				rotation.z = currentNode["rotation"][2].get<float>();
+
+				matrixTranslation = glm::toMat4(rotation);
+			}
+
+			glm::mat4 matrixScale(1.0f);
+			if (currentNode.contains("scale"))
+			{
+				glm::vec3 scale;
+				scale.x = currentNode["scale"][0].get<float>();
+				scale.y = currentNode["scale"][1].get<float>();
+				scale.t = currentNode["scale"][2].get<float>();
+
+				matrixTranslation = glm::scale(scale);
+			}
+
+			local = matrixTranslation * matrixRotation * matrixScale;
 		}
 
-		glm::mat4 matrixRotation(1.0f);
-		if (currentNode.contains("rotation"))
-		{
-			glm::quat rotation;
-			rotation.w = currentNode["rotation"][3].get<float>();
-			rotation.x = currentNode["rotation"][0].get<float>();
-			rotation.y = currentNode["rotation"][1].get<float>();
-			rotation.z = currentNode["rotation"][2].get<float>();
-
-			matrixTranslation = glm::toMat4(rotation);
-		}
-
-		glm::mat4 matrixScale(1.0f);
-		if (currentNode.contains("scale"))
-		{
-			glm::vec3 scale;
-			scale.x = currentNode["scale"][0].get<float>();
-			scale.y = currentNode["scale"][1].get<float>();
-			scale.t = currentNode["scale"][2].get<float>();
-
-			matrixTranslation = glm::scale(scale);
-		}
-
-		glm::mat4 local = matrixTranslation * matrixRotation * matrixScale;
 		glm::mat4 world = parent * local;
 
 		g_nodes[currentNodeIndex.get<uint32_t>()].position = world * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		g_nodes[currentNodeIndex.get<uint32_t>()].orientation = glm::mat3(world) * glm::vec3(0.0f, 0.0f, 1.0f);
 
 		//
 
@@ -442,6 +466,19 @@ int main(int argc, char *argv[])
 		{
 			audioEmitter.rolloffFactor = (ALfloat)currentAudioEmitter["rolloffFactor"].get<float>();
 		}
+		//
+		if (currentAudioEmitter.contains("coneInnerAngle"))
+		{
+			audioEmitter.coneInnerAngle = (ALfloat)currentAudioEmitter["coneInnerAngle"].get<float>();
+		}
+		if (currentAudioEmitter.contains("coneOuterAngle"))
+		{
+			audioEmitter.coneOuterAngle = (ALfloat)currentAudioEmitter["coneOuterAngle"].get<float>();
+		}
+		if (currentAudioEmitter.contains("coneOuterGain"))
+		{
+			audioEmitter.coneOuterGain = (ALfloat)currentAudioEmitter["coneOuterGain"].get<float>();
+		}
 
 		g_audioEmitters.push_back(audioEmitter);
 
@@ -571,6 +608,42 @@ int main(int argc, char *argv[])
 					{
 						finalGain *= powf(glm::max(distance, audioEmitter.refDistance) / audioEmitter.refDistance, -audioEmitter.rolloffFactor);
 					}
+
+					//
+
+					if (glm::length(g_nodes[audioEmitterInstance.nodeIndex].orientation) != 0.0f && ((audioEmitter.coneInnerAngle != M_2PI) || (audioEmitter.coneOuterAngle != M_2PI)))
+					{
+						// Take sound cone into account
+
+						glm::vec3 sourceToListener = glm::normalize(glm::vec3(g_nodes[audioEmitterInstance.nodeIndex].position - g_listenerPosition));
+						glm::vec3 normalizedSourceOrientation = glm::normalize(g_nodes[audioEmitterInstance.nodeIndex].orientation);
+
+						float angle = acosf(glm::dot(sourceToListener, normalizedSourceOrientation));
+						float absAngle = fabs(angle);
+
+						float absInnerAngle = fabs(audioEmitter.coneInnerAngle) * 0.5f;
+						float absOuterAngle = fabs(audioEmitter.coneOuterAngle) * 0.5f;
+
+						if (absAngle <= absInnerAngle)
+						{
+							// No attenuation
+						}
+						else if (absAngle >= absOuterAngle)
+						{
+							// Max attenuation
+							finalGain *= audioEmitter.coneOuterGain;
+						}
+						else
+						{
+						    // Between inner and outer cones
+						    // inner -> outer, x goes from 0 -> 1
+						    float x = (absAngle - absInnerAngle) / (absOuterAngle - absInnerAngle);
+
+						    finalGain *= (1.0f - x) + audioEmitter.coneOuterGain * x;
+						}
+					}
+
+					//
 
 					alSourcef(audioEmitterInstance.source, AL_GAIN, finalGain);
 					alSourcefv(audioEmitterInstance.source, AL_POSITION, glm::value_ptr(g_nodes[audioEmitterInstance.nodeIndex].position));

@@ -29,4 +29,6 @@ OpenAL soft
 https://github.com/kcat/openal-soft  
 Quick Sounds  
 https://quicksounds.com/  
+Web Audio Sound Cones
+https://webaudio.github.io/web-audio-api/#Spatialization-sound-cones  
   
