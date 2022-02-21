@@ -2,7 +2,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -17,15 +16,15 @@
 
 #include <nlohmann/json.hpp>
 
+#include "io.h"
+
 #include "decode.h"
 
 using json = nlohmann::json;
 
-struct DecomposedPath {
-	std::string parentPath = "";
-	std::string stem = "";
-	std::string extension = "";
-};
+//
+// OMI structures
+//
 
 struct AudioSource {
 	ALuint buffer;
@@ -62,52 +61,15 @@ static std::vector<AudioEmitterInstance> g_audioEmitterInstances;
 
 static glm::vec4 g_listenerPosition(0.0f, 0.0f, 0.0f, 1.0f);
 static glm::vec3 g_listenerVelocity(0.0f, 0.0f, 0.0f);
-static glm::vec3 g_listenerUp(0.0f, 1.0f, 0.0f);
 static glm::vec3 g_listenerForward(0.0f, 0.0f, -1.0f);
+static glm::vec3 g_listenerUp(0.0f, 1.0f, 0.0f);
 
 //
 // Functions
 //
 
-void decomposePath(DecomposedPath& decomposedPath, const std::string& path)
-{
-	std::filesystem::path filesystemPath(path);
-
-	decomposedPath.parentPath = filesystemPath.parent_path().generic_string();
-	decomposedPath.stem = filesystemPath.stem().generic_string();
-	decomposedPath.extension = filesystemPath.extension().generic_string();
-
-	if (decomposedPath.parentPath.size() > 0 && (decomposedPath.parentPath.back() != '/' || decomposedPath.parentPath.back() != '\\'))
-	{
-		decomposedPath.parentPath += "/";
-	}
-}
-
-bool loadFile(std::string& output, const std::string& filename)
-{
-	std::ifstream file(filename, std::ios::ate | std::ios::binary);
-	if (!file.is_open())
-	{
-		return false;
-	}
-
-	size_t fileSize = static_cast<size_t>(file.tellg());
-	file.seekg(0);
-
-	output.resize(fileSize);
-
-	file.read(output.data(), fileSize);
-	file.close();
-
-	return true;
-}
-
 ALuint createAudioBuffer(const AudioData& audioData)
 {
-	//
-	// OpenAL buffer creation
-	//
-
 	ALuint buffer;
 	alGenBuffers(1, &buffer);
 
@@ -201,6 +163,7 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 				json& audioEmitter = currentNode["extensions"]["OMI_audio_emitter"]["audioEmitter"];
 
 				AudioEmitterInstance audioEmitterInstance;
+
 				audioEmitterInstance.audioEmitterIndex = audioEmitter.get<uint32_t>();
 
 				audioEmitterInstance.source = createAudioSource(g_audioEmitters[audioEmitterInstance.audioEmitterIndex]);
@@ -208,6 +171,7 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 				{
 					return false;
 				}
+
 				audioEmitterInstance.position = currentPosition;
 
 				g_audioEmitterInstances.push_back(audioEmitterInstance);
@@ -273,7 +237,7 @@ int main(int argc, char *argv[])
 	decomposePath(decomposedFilename, filename);
 
 	//
-	// OpenAL initializing
+	// Audio initializing
 	//
 
 	g_device = alcOpenDevice(NULL);
@@ -380,6 +344,8 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
+		//
+
 		AudioSource audioSource;
 
 		audioSource.buffer = createAudioBuffer(audioData);
@@ -458,6 +424,7 @@ int main(int argc, char *argv[])
 				for (auto& currentAudioEmitter : audioEmitters)
 				{
 					AudioEmitterInstance audioEmitterInstance;
+
 					audioEmitterInstance.audioEmitterIndex = currentAudioEmitter.get<uint32_t>();
 
 					audioEmitterInstance.source = createAudioSource(g_audioEmitters[audioEmitterInstance.audioEmitterIndex]);
@@ -513,7 +480,7 @@ int main(int argc, char *argv[])
 		std::this_thread::yield();
 		loop = false;
 
-		// Listener data
+		// Position etc. of listener
 		alListenerfv(AL_POSITION, glm::value_ptr(g_listenerPosition));
 		alListenerfv(AL_VELOCITY, glm::value_ptr(g_listenerVelocity));
 		ALfloat listenerOrientation[6] = {g_listenerForward.x, g_listenerForward.y, g_listenerForward.z, g_listenerUp.x, g_listenerUp.y, g_listenerUp.z};
@@ -523,6 +490,7 @@ int main(int argc, char *argv[])
 		{
 			auto& audioEmitter = g_audioEmitters[audioEmitterInstance.audioEmitterIndex];
 
+			// Positional audio emitter
 			if (audioEmitter.type == "positional")
 			{
 				float finalGain = audioEmitter.gain;
@@ -564,7 +532,7 @@ int main(int argc, char *argv[])
 	} while(loop);
 
 	//
-	// OpenAL shutdown
+	// Audio shutdown
 	//
 
 	shutdownAudio();

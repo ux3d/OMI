@@ -4,10 +4,6 @@
 
 bool decodeAudioData(AudioData& audioData, const std::string& filename)
 {
-	//
-	// mpg123 for decoding
-	//
-
 	if (mpg123_init() != MPG123_OK)
 	{
 		return false;
@@ -22,7 +18,7 @@ bool decodeAudioData(AudioData& audioData, const std::string& filename)
 	size_t buffer_size = mpg123_outblock(handle);
 	std::vector<uint8_t> buffer_read(buffer_size);
 
-	// Force to mono and 16bit
+	// Force to mono and 16bit for positional audio easier handling
 	if (mpg123_open_fixed(handle, filename.c_str(), MPG123_MONO, MPG123_ENC_SIGNED_16) != MPG123_OK)
 	{
 		mpg123_delete(handle);
