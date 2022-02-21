@@ -202,6 +202,31 @@ bool handleNodes(json& nodes, json& glTF, glm::mat4& parent)
 	return true;
 }
 
+bool setupAudio()
+{
+	g_device = alcOpenDevice(NULL);
+	if(!g_device)
+	{
+		return false;
+	}
+
+	g_context = alcCreateContext(g_device, 0);
+	if(!g_context)
+	{
+		return false;
+	}
+
+	if (alcMakeContextCurrent(g_context) == ALC_FALSE)
+	{
+        return false;
+	}
+
+	// OMI_audio_emitter requires a distance model per source, so we do it manually
+	alDistanceModel(AL_NONE);
+
+	return true;
+}
+
 void shutdownAudio()
 {
 	for (auto& audioEmitterInstance : g_audioEmitterInstances)
@@ -248,35 +273,14 @@ int main(int argc, char *argv[])
 	// Audio initializing
 	//
 
-	g_device = alcOpenDevice(NULL);
-	if(!g_device)
+	if (!setupAudio())
 	{
-		printf("Error: Could not open device\n");
-
-		return 1;
-	}
-
-	g_context = alcCreateContext(g_device, 0);
-	if(!g_context)
-	{
-		printf("Error: Could not create context\n");
-
-		shutdownAudio();
-
-		return 1;
-	}
-
-	if (alcMakeContextCurrent(g_context) == ALC_FALSE)
-	{
-        printf("Error: Could not set context\n");
+        printf("Error: Could not setup audio\n");
 
         shutdownAudio();
 
-        return 1;
+		return -1;
 	}
-
-	// OMI_audio_emitter requires a distance model per source, so we do it manually
-	alDistanceModel(AL_NONE);
 
 	//
 	// glTF loading and interpreting
