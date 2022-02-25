@@ -274,7 +274,7 @@ void updateNodes(json& nodes, json& glTF, glm::mat4& parent)
 				rotation.y = currentNode["rotation"][1].get<float>();
 				rotation.z = currentNode["rotation"][2].get<float>();
 
-				matrixTranslation = glm::toMat4(rotation);
+				matrixRotation = glm::toMat4(rotation);
 			}
 
 			glm::mat4 matrixScale(1.0f);
@@ -285,7 +285,7 @@ void updateNodes(json& nodes, json& glTF, glm::mat4& parent)
 				scale.y = currentNode["scale"][1].get<float>();
 				scale.t = currentNode["scale"][2].get<float>();
 
-				matrixTranslation = glm::scale(scale);
+				matrixScale = glm::scale(scale);
 			}
 
 			local = matrixTranslation * matrixRotation * matrixScale;
