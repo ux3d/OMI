@@ -22,7 +22,7 @@
 using json = nlohmann::json;
 
 //
-// OMI structures
+// KHR audio structures
 //
 
 static const float M_PI = 3.1415926535897932384626433832795f;
@@ -32,12 +32,7 @@ struct AudioSource {
 	ALuint buffer;
 };
 
-struct AudioEmitter {
-	std::string type = "global";
-	uint32_t audioSourceIndex;
-	bool playing = false;
-	ALboolean loop = AL_FALSE;
-	ALfloat gain = 1.0f;
+struct Positional {
 	std::string distanceModel = "inverse";
 	ALfloat maxDistance = 10000.0f;
 	ALfloat refDistance = 1.0f;
@@ -46,6 +41,16 @@ struct AudioEmitter {
 	ALfloat coneInnerAngle = M_2PI;
 	ALfloat coneOuterAngle = M_2PI;
 	ALfloat coneOuterGain = 0.0f;
+};
+
+struct AudioEmitter {
+	std::string type = "global";
+	uint32_t audioSourceIndex;
+	bool playing = false;
+	ALboolean loop = AL_FALSE;
+	ALfloat gain = 1.0f;
+
+	Positional positional;
 };
 
 struct Node {
@@ -139,9 +144,9 @@ bool createAudioEmitterInstances(json& nodes, json& glTF)
 
 		if (currentNode.contains("extensions"))
 		{
-			if (currentNode["extensions"].contains("OMI_audio_emitter"))
+			if (currentNode["extensions"].contains("KHR_audio"))
 			{
-				json& audioEmitter = currentNode["extensions"]["OMI_audio_emitter"]["audioEmitter"];
+				json& audioEmitter = currentNode["extensions"]["KHR_audio"]["emitter"];
 
 				AudioEmitterInstance audioEmitterInstance;
 
@@ -194,7 +199,7 @@ bool setupAudio()
         return false;
 	}
 
-	// OMI_audio_emitter requires a distance model per source, so we do it manually
+	// KHR_audio requires a distance model per source, so we do it manually
 	alDistanceModel(AL_NONE);
 
 	ALenum error = alGetError();
@@ -360,9 +365,9 @@ int main(int argc, char *argv[])
 	}
 
 	json& extensions = glTF["extensions"];
-	if (!extensions.contains("OMI_audio_emitter"))
+	if (!extensions.contains("KHR_audio"))
 	{
-		printf("Error: glTF does not contain the OMI_audio_emitter extension\n");
+		printf("Error: glTF does not contain the KHR_audio extension\n");
 
 		shutdownAudio();
 
@@ -371,9 +376,9 @@ int main(int argc, char *argv[])
 
 	// For now on, we expect the glTF is valid and does contain the required data
 
-	json& OMI_audio_emitter = extensions["OMI_audio_emitter"];
+	json& KHR_audio = extensions["KHR_audio"];
 
-	for (auto& currentAudioSource : OMI_audio_emitter["audioSources"])
+	for (auto& currentAudioSource : KHR_audio["sources"])
 	{
 		if (!currentAudioSource.contains("uri"))
 		{
@@ -426,7 +431,7 @@ int main(int argc, char *argv[])
 		printf("Info: Created audio source for uri '%s'\n", uri.c_str());
 	}
 
-	for (auto& currentAudioEmitter : OMI_audio_emitter["audioEmitters"])
+	for (auto& currentAudioEmitter : KHR_audio["emitters"])
 	{
 		AudioEmitter audioEmitter;
 
@@ -450,34 +455,37 @@ int main(int argc, char *argv[])
 		{
 			audioEmitter.gain = (ALfloat)currentAudioEmitter["gain"].get<float>();
 		}
-		if (currentAudioEmitter.contains("distanceModel"))
+		if (currentAudioEmitter.contains("positional") && audioEmitter.type == "positional")
 		{
-			audioEmitter.distanceModel = currentAudioEmitter["distanceModel"].get<std::string>();
-		}
-		if (currentAudioEmitter.contains("maxDistance"))
-		{
-			audioEmitter.maxDistance = (ALfloat)currentAudioEmitter["maxDistance"].get<float>();
-		}
-		if (currentAudioEmitter.contains("refDistance"))
-		{
-			audioEmitter.refDistance = (ALfloat)currentAudioEmitter["refDistance"].get<float>();
-		}
-		if (currentAudioEmitter.contains("rolloffFactor"))
-		{
-			audioEmitter.rolloffFactor = (ALfloat)currentAudioEmitter["rolloffFactor"].get<float>();
-		}
-		//
-		if (currentAudioEmitter.contains("coneInnerAngle"))
-		{
-			audioEmitter.coneInnerAngle = (ALfloat)currentAudioEmitter["coneInnerAngle"].get<float>();
-		}
-		if (currentAudioEmitter.contains("coneOuterAngle"))
-		{
-			audioEmitter.coneOuterAngle = (ALfloat)currentAudioEmitter["coneOuterAngle"].get<float>();
-		}
-		if (currentAudioEmitter.contains("coneOuterGain"))
-		{
-			audioEmitter.coneOuterGain = (ALfloat)currentAudioEmitter["coneOuterGain"].get<float>();
+			if (currentAudioEmitter["positional"].contains("distanceModel"))
+			{
+				audioEmitter.positional.distanceModel = currentAudioEmitter["positional"]["distanceModel"].get<std::string>();
+			}
+			if (currentAudioEmitter["positional"].contains("maxDistance"))
+			{
+				audioEmitter.positional.maxDistance = (ALfloat)currentAudioEmitter["positional"]["maxDistance"].get<float>();
+			}
+			if (currentAudioEmitter["positional"].contains("refDistance"))
+			{
+				audioEmitter.positional.refDistance = (ALfloat)currentAudioEmitter["positional"]["refDistance"].get<float>();
+			}
+			if (currentAudioEmitter["positional"].contains("rolloffFactor"))
+			{
+				audioEmitter.positional.rolloffFactor = (ALfloat)currentAudioEmitter["positional"]["rolloffFactor"].get<float>();
+			}
+			//
+			if (currentAudioEmitter["positional"].contains("coneInnerAngle"))
+			{
+				audioEmitter.positional.coneInnerAngle = (ALfloat)currentAudioEmitter["positional"]["coneInnerAngle"].get<float>();
+			}
+			if (currentAudioEmitter["positional"].contains("coneOuterAngle"))
+			{
+				audioEmitter.positional.coneOuterAngle = (ALfloat)currentAudioEmitter["positional"]["coneOuterAngle"].get<float>();
+			}
+			if (currentAudioEmitter["positional"].contains("coneOuterGain"))
+			{
+				audioEmitter.positional.coneOuterGain = (ALfloat)currentAudioEmitter["positional"]["coneOuterGain"].get<float>();
+			}
 		}
 
 		g_audioEmitters.push_back(audioEmitter);
@@ -500,9 +508,9 @@ int main(int argc, char *argv[])
 
 		if (currentScene.contains("extensions"))
 		{
-			if (currentScene["extensions"].contains("OMI_audio_emitter"))
+			if (currentScene["extensions"].contains("KHR_audio"))
 			{
-				json& audioEmitters = currentScene["extensions"]["OMI_audio_emitter"]["audioEmitters"];
+				json& audioEmitters = currentScene["extensions"]["KHR_audio"]["emitters"];
 
 				for (auto& currentAudioEmitter : audioEmitters)
 				{
@@ -596,22 +604,22 @@ int main(int argc, char *argv[])
 
 					ALfloat distance = glm::distance(g_nodes[audioEmitterInstance.nodeIndex].position, g_listenerPosition);
 
-					if (audioEmitter.distanceModel == "linear")
+					if (audioEmitter.positional.distanceModel == "linear")
 					{
-						finalGain *= 1.0f - audioEmitter.rolloffFactor * (distance - audioEmitter.refDistance) / (audioEmitter.maxDistance - audioEmitter.refDistance);
+						finalGain *= 1.0f - audioEmitter.positional.rolloffFactor * (distance - audioEmitter.positional.refDistance) / (audioEmitter.positional.maxDistance - audioEmitter.positional.refDistance);
 					}
-					else if (audioEmitter.distanceModel == "inverse")
+					else if (audioEmitter.positional.distanceModel == "inverse")
 					{
-						finalGain *= audioEmitter.refDistance / (audioEmitter.refDistance + audioEmitter.rolloffFactor * (glm::max(distance, audioEmitter.refDistance) - audioEmitter.refDistance));
+						finalGain *= audioEmitter.positional.refDistance / (audioEmitter.positional.refDistance + audioEmitter.positional.rolloffFactor * (glm::max(distance, audioEmitter.positional.refDistance) - audioEmitter.positional.refDistance));
 					}
-					else if (audioEmitter.distanceModel == "exponential")
+					else if (audioEmitter.positional.distanceModel == "exponential")
 					{
-						finalGain *= powf(glm::max(distance, audioEmitter.refDistance) / audioEmitter.refDistance, -audioEmitter.rolloffFactor);
+						finalGain *= powf(glm::max(distance, audioEmitter.positional.refDistance) / audioEmitter.positional.refDistance, -audioEmitter.positional.rolloffFactor);
 					}
 
 					//
 
-					if (glm::length(g_nodes[audioEmitterInstance.nodeIndex].orientation) != 0.0f && ((audioEmitter.coneInnerAngle != M_2PI) || (audioEmitter.coneOuterAngle != M_2PI)))
+					if (glm::length(g_nodes[audioEmitterInstance.nodeIndex].orientation) != 0.0f && ((audioEmitter.positional.coneInnerAngle != M_2PI) || (audioEmitter.positional.coneOuterAngle != M_2PI)))
 					{
 						// Take sound cone into account
 
@@ -621,8 +629,8 @@ int main(int argc, char *argv[])
 						float angle = acosf(glm::dot(sourceToListener, normalizedSourceOrientation));
 						float absAngle = fabs(angle);
 
-						float absInnerAngle = fabs(audioEmitter.coneInnerAngle) * 0.5f;
-						float absOuterAngle = fabs(audioEmitter.coneOuterAngle) * 0.5f;
+						float absInnerAngle = fabs(audioEmitter.positional.coneInnerAngle) * 0.5f;
+						float absOuterAngle = fabs(audioEmitter.positional.coneOuterAngle) * 0.5f;
 
 						if (absAngle <= absInnerAngle)
 						{
@@ -631,7 +639,7 @@ int main(int argc, char *argv[])
 						else if (absAngle >= absOuterAngle)
 						{
 							// Max attenuation
-							finalGain *= audioEmitter.coneOuterGain;
+							finalGain *= audioEmitter.positional.coneOuterGain;
 						}
 						else
 						{
@@ -639,7 +647,7 @@ int main(int argc, char *argv[])
 						    // inner -> outer, x goes from 0 -> 1
 						    float x = (absAngle - absInnerAngle) / (absOuterAngle - absInnerAngle);
 
-						    finalGain *= (1.0f - x) + audioEmitter.coneOuterGain * x;
+						    finalGain *= (1.0f - x) + audioEmitter.positional.coneOuterGain * x;
 						}
 					}
 

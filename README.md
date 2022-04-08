@@ -1,5 +1,5 @@
-# OMI
-Implementation of the `OMI_audio_emitter` glTF extension in C++.  
+# KHR_audio
+Implementation of the `KHR_audio` glTF extension in C++.  
   
 For Windows, this project depends on Eclipse C++, MSYS2 and the listed libraries.
 At a later point of time, this will be resolved by adding a CMake file plus making the required changes to build for different platforms.  
@@ -23,8 +23,8 @@ mpg123
 https://www.mpg123.de/  
 MSYS2  
 https://www.msys2.org/  
-OMI_audio_emitter  
-https://github.com/omigroup/gltf-extensions/tree/main/extensions/2.0/OMI_audio_emitter  
+KHR_audio  
+https://github.com/KhronosGroup/glTF/pull/2137  
 OpenAL soft  
 https://github.com/kcat/openal-soft  
 Quick Sounds  

@@ -3,8 +3,8 @@
 		"version": "2.0"
 	},
   "extensions": {
-    "OMI_audio_emitter": {
-      "audioSources": [
+    "KHR_audio": {
+      "sources": [
         {
           "name": "environment",
           "uri": "environment.mp3"
@@ -14,7 +14,7 @@
           "uri": "quack.mp3"
         }
       ],
-      "audioEmitters": [
+      "emitters": [
         {
           "name": "environment emitter",
           "type": "global",
@@ -30,13 +30,15 @@
           "loop": true,
           "playing": true,
           "source": 1,
-          "coneInnerAngle": 6.283185307179586,
-          "coneOuterAngle": 6.283185307179586,
-          "coneOuterGain": 0.0,
-          "distanceModel": "inverse",
-          "maxDistance": 10.0,
-          "refDistance": 1.0,
-          "rolloffFactor": 0.8
+          "positional": {
+            "coneInnerAngle": 6.283185307179586,
+            "coneOuterAngle": 6.283185307179586,
+            "coneOuterGain": 0.0,
+            "distanceModel": "inverse",
+            "maxDistance": 10.0,
+            "refDistance": 1.0,
+            "rolloffFactor": 0.8
+          }
         }
       ]
     }
@@ -49,8 +51,8 @@
 				0
 			],
       "extensions": {
-        "OMI_audio_emitter": {
-          "audioEmitters": [
+        "KHR_audio": {
+          "emitters": [
 		        0
 		      ]
         }
@@ -66,13 +68,13 @@
 	      0.0
 	    ],
       "extensions": {
-        "OMI_audio_emitter": {
-          "audioEmitter": 1
+        "KHR_audio": {
+          "emitter": 1
         }
       }
     }
   ],
   "extensionsUsed": [
-    "OMI_audio_emitter"
+    "KHR_audio"
   ]
 }
