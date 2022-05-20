@@ -1,80 +1,238 @@
 {
+	"accessors": [
+		{
+			"bufferView": 0,
+			"byteOffset": 0,
+			"componentType": 5123,
+			"count": 12636,
+			"max": [
+				2398.0
+			],
+			"min": [
+				0.0
+			],
+			"type": "SCALAR"
+		},
+		{
+			"bufferView": 1,
+			"byteOffset": 0,
+			"componentType": 5126,
+			"count": 2399,
+			"max": [
+				0.9998324513435364,
+				0.999580979347229,
+				0.9995986819267273
+			],
+			"min": [
+				-0.9984354972839355,
+				-0.9999998807907104,
+				-0.9990843534469604
+			],
+			"type": "VEC3"
+		},
+		{
+			"bufferView": 2,
+			"byteOffset": 0,
+			"componentType": 5126,
+			"count": 2399,
+			"max": [
+				0.6132819652557373,
+				1.639699935913086,
+				0.9617989659309387
+			],
+			"min": [
+				-0.539251983165741,
+				0.09929369390010834,
+				-0.6929849982261658
+			],
+			"type": "VEC3"
+		},
+		{
+			"bufferView": 3,
+			"byteOffset": 0,
+			"componentType": 5126,
+			"count": 2399,
+			"max": [
+				0.9833459854125975,
+				0.9800369739532472
+			],
+			"min": [
+				0.026409000158309937,
+				0.01996302604675293
+			],
+			"type": "VEC2"
+		}
+	],
 	"asset": {
+		"extras": {
+			"created": "Fri May 20 08:15:07 2022"
+		},
+		"generator": "Gestaltor 2022.3.0  Development (internal) (dev-645986068)",
 		"version": "2.0"
 	},
-  "extensions": {
-    "KHR_audio": {
-      "sources": [
-        {
-          "name": "environment",
-          "uri": "environment.mp3"
-        },
-        {
-          "name": "quack",
-          "uri": "quack.mp3"
-        }
-      ],
-      "emitters": [
-        {
-          "name": "environment emitter",
-          "type": "global",
-          "gain": 1.0,
-          "loop": true,
-          "playing": true,
-          "source": 0
-        },
-        {
-          "name": "duck emitter",
-          "type": "positional",
-          "gain": 0.8,
-          "loop": true,
-          "playing": true,
-          "source": 1,
-          "positional": {
-            "coneInnerAngle": 6.283185307179586,
-            "coneOuterAngle": 6.283185307179586,
-            "coneOuterGain": 0.0,
-            "distanceModel": "inverse",
-            "maxDistance": 10.0,
-            "refDistance": 1.0,
-            "rolloffFactor": 0.8
-          }
-        }
-      ]
-    }
-  },
+	"bufferViews": [
+		{
+			"buffer": 0,
+			"byteLength": 25272,
+			"byteOffset": 0,
+			"target": 34963
+		},
+		{
+			"buffer": 0,
+			"byteLength": 28788,
+			"byteOffset": 25272,
+			"byteStride": 12
+		},
+		{
+			"buffer": 0,
+			"byteLength": 28788,
+			"byteOffset": 54060,
+			"byteStride": 12
+		},
+		{
+			"buffer": 0,
+			"byteLength": 19192,
+			"byteOffset": 82848,
+			"byteStride": 8,
+			"target": 34962
+		}
+	],
+	"buffers": [
+		{
+			"byteLength": 102040,
+			"uri": "example01.bin"
+		}
+	],
+	"extensions": {
+		"KHR_audio": {
+			"emitters": [
+				{
+					"gain": 1.0,
+					"loop": true,
+					"name": "environment emitter",
+					"playing": true,
+					"source": 0,
+					"type": "global"
+				},
+				{
+					"distanceModel": "inverse",
+					"gain": 0.8,
+					"loop": true,
+					"name": "duck emitter",
+					"playing": true,
+					"positional": {
+						"coneInnerAngle": 6.283185307179586,
+						"coneOuterAngle": 6.283185307179586,
+						"coneOuterGain": 0.0,
+						"maxDistance": 10.0,
+						"refDistance": 1.0,
+						"rolloffFactor": 0.8
+					},
+					"source": 1,
+					"type": "positional"
+				}
+			],
+			"sources": [
+				{
+					"name": "environment",
+					"uri": "environment.mp3"
+				},
+				{
+					"name": "quack",
+					"uri": "quack.mp3"
+				}
+			]
+		}
+	},
+	"extensionsRequired": [
+		"KHR_audio"
+	],
+	"extensionsUsed": [
+		"KHR_audio"
+	],
+	"images": [
+		{
+			"mimeType": "image/png",
+			"uri": "DuckCM.png"
+		}
+	],
+	"materials": [
+		{
+			"emissiveFactor": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"name": "Duck Material",
+			"pbrMetallicRoughness": {
+				"baseColorTexture": {
+					"index": 0
+				},
+				"metallicFactor": 0.0
+			}
+		}
+	],
+	"meshes": [
+		{
+			"name": "Duck Mesh",
+			"primitives": [
+				{
+					"attributes": {
+						"NORMAL": 1,
+						"POSITION": 2,
+						"TEXCOORD_0": 3
+					},
+					"indices": 0,
+					"material": 0,
+					"mode": 4
+				}
+			]
+		}
+	],
+	"nodes": [
+		{
+			"extensions": {
+				"KHR_audio": {
+					"emitter": 1
+				}
+			},
+			"mesh": 0,
+			"name": "Duck Node",
+			"translation": [
+				5.0,
+				0.0,
+				0.0
+			]
+		}
+	],
+	"samplers": [
+		{
+			"magFilter": 9729,
+			"minFilter": 9986,
+			"wrapS": 10497,
+			"wrapT": 10497
+		}
+	],
 	"scene": 0,
-  "scenes": [
-    {
-      "name": "Default Scene",
+	"scenes": [
+		{
+			"extensions": {
+				"KHR_audio": {
+					"emitters": [
+						0
+					]
+				}
+			},
+			"name": "Default Scene",
 			"nodes": [
 				0
-			],
-      "extensions": {
-        "KHR_audio": {
-          "emitters": [
-		        0
-		      ]
-        }
-      }
-    }
-  ],
-  "nodes": [
-    {
-      "name": "Duck",
-      "translation": [
-	      5.0,
-        0.0,
-	      0.0
-	    ],
-      "extensions": {
-        "KHR_audio": {
-          "emitter": 1
-        }
-      }
-    }
-  ],
-  "extensionsUsed": [
-    "KHR_audio"
-  ]
+			]
+		}
+	],
+	"textures": [
+		{
+			"sampler": 0,
+			"source": 0
+		}
+	]
 }
